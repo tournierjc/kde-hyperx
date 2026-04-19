@@ -105,6 +105,24 @@ void TrayIcon::refreshTooltip()
     }
 }
 
+void TrayIcon::drawHeadsetOutline(QPainter &p, const QColor &color) const
+{
+    constexpr int S = 64;
+    QPen pen(color, 2.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+
+    QPainterPath headband;
+    headband.moveTo(10, 32);
+    headband.cubicTo(10, 6, S - 10, 6, S - 10, 32);
+    p.drawPath(headband);
+
+    QRectF leftCup(6, 28, 16, 22);
+    QRectF rightCup(S - 22, 28, 16, 22);
+    p.drawRoundedRect(leftCup, 4, 4);
+    p.drawRoundedRect(rightCup, 4, 4);
+}
+
 QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
 {
     constexpr int S = 64;
@@ -121,34 +139,30 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
     else if (pct > 25)  fillColor = QColor(0xFF, 0xCA, 0x28);
     else                fillColor = QColor(0xEF, 0x53, 0x50);
 
-    constexpr int margin = 4;
-    constexpr int termW  = 5;
-    QRectF body(margin, margin + 6, S - 2 * margin - termW, S - 2 * margin - 12);
-    QRectF terminal(body.right(), body.center().y() - 5, termW, 10);
+    drawHeadsetOutline(p, fillColor);
 
-    p.setPen(QPen(Qt::white, 2.5));
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(body, 4, 4);
-    p.drawRoundedRect(terminal, 2, 2);
+    QRectF leftCup(6, 28, 16, 22);
+    QRectF rightCup(S - 22, 28, 16, 22);
 
-    constexpr double inset = 3.0;
-    QRectF inner(body.left() + inset, body.top() + inset,
-                 body.width() - 2 * inset, body.height() - 2 * inset);
-    double fillW = inner.width() * pct / 100.0;
-    QRectF fillRect(inner.left(), inner.top(), fillW, inner.height());
+    double fillH = leftCup.height() * pct / 100.0;
+    double fillY = leftCup.bottom() - fillH;
+
     p.setPen(Qt::NoPen);
     p.setBrush(fillColor);
-    p.drawRoundedRect(fillRect, 2, 2);
+    p.setClipRect(QRectF(0, fillY, S, S));
+    p.drawRoundedRect(leftCup.adjusted(1, 1, -1, -1), 3, 3);
+    p.drawRoundedRect(rightCup.adjusted(1, 1, -1, -1), 3, 3);
+    p.setClipping(false);
 
     if (charging) {
         QPainterPath bolt;
-        double cx = body.center().x();
-        double cy = body.center().y();
-        bolt.moveTo(cx + 2, cy - 14);
-        bolt.lineTo(cx - 4, cy + 1);
+        double cx = S / 2.0;
+        double cy = 36.0;
+        bolt.moveTo(cx + 2, cy - 8);
+        bolt.lineTo(cx - 3, cy + 1);
         bolt.lineTo(cx + 1, cy + 1);
-        bolt.lineTo(cx - 2, cy + 14);
-        bolt.lineTo(cx + 4, cy - 1);
+        bolt.lineTo(cx - 2, cy + 9);
+        bolt.lineTo(cx + 3, cy - 1);
         bolt.lineTo(cx - 1, cy - 1);
         bolt.closeSubpath();
 
@@ -158,11 +172,11 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
     }
 
     QFont font;
-    font.setPixelSize(14);
+    font.setPixelSize(13);
     font.setBold(true);
     p.setFont(font);
     p.setPen(Qt::white);
-    p.drawText(QRectF(0, S - 18, S, 18), Qt::AlignCenter,
+    p.drawText(QRectF(0, S - 14, S, 14), Qt::AlignCenter,
                QStringLiteral("%1%").arg(pct));
 
     p.end();
@@ -177,22 +191,11 @@ QIcon TrayIcon::renderDisconnectedIcon() const
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing, true);
 
-    constexpr int margin = 4;
-    constexpr int termW  = 5;
-    QRectF body(margin, margin + 6, S - 2 * margin - termW, S - 2 * margin - 12);
-    QRectF terminal(body.right(), body.center().y() - 5, termW, 10);
+    drawHeadsetOutline(p, QColor(0x9E, 0x9E, 0x9E));
 
-    QColor gray(0x9E, 0x9E, 0x9E);
-    p.setPen(QPen(gray, 2.5));
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(body, 4, 4);
-    p.drawRoundedRect(terminal, 2, 2);
-
-    p.setPen(QPen(QColor(0xEF, 0x53, 0x50), 3));
-    p.drawLine(QPointF(body.left() + 6, body.top() + 6),
-               QPointF(body.right() - 6, body.bottom() - 6));
-    p.drawLine(QPointF(body.right() - 6, body.top() + 6),
-               QPointF(body.left() + 6, body.bottom() - 6));
+    p.setPen(QPen(QColor(0xEF, 0x53, 0x50), 3, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(18, 20), QPointF(46, 48));
+    p.drawLine(QPointF(46, 20), QPointF(18, 48));
 
     p.end();
     return QIcon(pixmap);

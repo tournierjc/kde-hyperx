@@ -5,6 +5,7 @@
 #include <QMenu>
 #include <QIcon>
 #include <QPixmap>
+#include <QPainter>
 
 class TrayIcon : public QObject {
     Q_OBJECT
@@ -22,6 +23,7 @@ public slots:
     void updateMute(bool muted);
 
 private:
+    void drawHeadsetOutline(QPainter &p, const QColor &color) const;
     QIcon renderBatteryIcon(int percent, bool charging) const;
     QIcon renderDisconnectedIcon() const;
     void refreshIcon();
