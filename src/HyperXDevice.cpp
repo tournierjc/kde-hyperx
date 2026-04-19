@@ -56,7 +56,9 @@ void HyperXDevice::run()
         }
 
         if (batteryTimer.elapsed() >= BATTERY_POLL_INTERVAL_MS) {
-            requestBattery();
+            if (m_headsetAlive.load()) {
+                requestBattery();
+            }
             batteryTimer.restart();
         }
     }
@@ -77,6 +79,8 @@ bool HyperXDevice::tryConnect()
             hid_set_nonblocking(dev, 1);
             m_device = dev;
             m_connected.store(true);
+            m_headsetAlive.store(true);
+            m_smoothedVoltage = 0.0f;
             qInfo() << "[HyperXDevice] connected, PID:" << Qt::hex << pid;
             emit deviceConnected();
             return true;
@@ -93,9 +97,11 @@ void HyperXDevice::disconnect()
     }
 
     bool wasConnected = m_connected.exchange(false);
+    m_headsetAlive.store(false);
     m_batteryPercent.store(-1);
     m_charging.store(false);
     m_muted.store(false);
+    m_smoothedVoltage = 0.0f;
 
     if (wasConnected) {
         qInfo() << "[HyperXDevice] disconnected";
@@ -125,10 +131,17 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
     if (length == 2) {
         if (data[0] == 0x64) {
             if (data[1] == 0x01) {
+                m_headsetAlive.store(true);
                 m_connected.store(true);
+                m_smoothedVoltage = 0.0f;
                 requestBattery();
+                emit deviceConnected();
             } else if (data[1] == 0x03) {
                 // Headset powered off (dongle stays alive — don't close handle)
+                m_headsetAlive.store(false);
+                m_batteryPercent.store(-1);
+                m_charging.store(false);
+                m_smoothedVoltage = 0.0f;
                 emit deviceDisconnected();
             }
         } else if (data[0] == 0x65) {
@@ -144,30 +157,50 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
     if (length == 5) return; // volume events — irrelevant for tray
 
     // Protocol: 20 or 15 bytes = battery response
-    // Bytes [3..4] are big-endian voltage; above VOLTAGE_CHARGING_THRESHOLD = charging
+    // data[3] encodes charge state:
+    //   0x0e / 0x0f → discharging (voltage = data[3]<<8 | data[4])
+    //   0x10        → charging in progress (data[4] >= 20) or fully charged (data[4] < 20)
+    //   0x11        → charging (some firmware revisions)
+    // Refs: HeadsetControl, kondinskis/hyperx-cloud-flight, srn/hyperx-cloud-flight-wireless
     if (length == 20 || length == 0x0F) {
-        uint16_t voltage = static_cast<uint16_t>((data[3] << 8) | data[4]);
+        if (!m_headsetAlive.load()) return;
 
-        if (voltage > VOLTAGE_CHARGING_THRESHOLD) {
+        bool isCharging = (data[3] == 0x10 || data[3] == 0x11);
+
+        // Fallback: voltage threshold (catches edge cases across firmware variants)
+        uint16_t voltage = static_cast<uint16_t>((data[3] << 8) | data[4]);
+        if (!isCharging && voltage > VOLTAGE_CHARGING_THRESHOLD) {
+            isCharging = true;
+        }
+
+        if (isCharging) {
             if (!m_charging.load()) {
                 m_charging.store(true);
                 emit chargingChanged(true);
             }
-            int prev = m_batteryPercent.load();
-            if (prev < 0) {
-                m_batteryPercent.store(100);
-                emit batteryChanged(100);
-            }
+            // During charging the reported voltage is the charger rail (~4.1 V+),
+            // not the battery's open-circuit voltage — keep the last known
+            // percentage from before charging started.
             return;
         }
 
+        // Not charging — voltage is meaningful, use polynomial estimate
         bool wasCharging = m_charging.exchange(false);
         if (wasCharging) {
             emit chargingChanged(false);
         }
 
+        float fv = static_cast<float>(voltage);
+        if (m_smoothedVoltage < 1.0f) {
+            m_smoothedVoltage = fv;
+        } else {
+            m_smoothedVoltage = EMA_ALPHA * fv + (1.0f - EMA_ALPHA) * m_smoothedVoltage;
+        }
+
         int level = std::clamp(
-            static_cast<int>(std::roundf(estimateBatteryLevel(voltage))), 0, 100);
+            static_cast<int>(std::roundf(estimateBatteryLevel(
+                static_cast<uint16_t>(std::roundf(m_smoothedVoltage))))),
+            0, 100);
 
         int prev = m_batteryPercent.load();
         m_batteryPercent.store(level);

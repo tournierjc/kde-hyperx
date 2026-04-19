@@ -21,9 +21,14 @@ public:
     // Reverse-engineered threshold: voltage above this = headset is charging
     static constexpr uint16_t VOLTAGE_CHARGING_THRESHOLD = 0x100B;
 
-    static constexpr int READ_TIMEOUT_MS          = 500;
+    static constexpr int READ_TIMEOUT_MS          = 100;
     static constexpr int BATTERY_POLL_INTERVAL_MS = 30000;
     static constexpr int RECONNECT_INTERVAL_MS    = 5000;
+
+    // Exponential moving average weight for voltage smoothing (0..1).
+    // Lower = smoother but slower to react.  0.3 at 30 s polls ≈ 1.5 min
+    // effective time-constant — good enough for battery level.
+    static constexpr float EMA_ALPHA = 0.3f;
 
     bool isConnected() const { return m_connected.load(); }
     int  batteryPercent() const { return m_batteryPercent.load(); }
@@ -56,6 +61,9 @@ private:
     std::atomic<int>  m_batteryPercent{-1};
     std::atomic<bool> m_charging{false};
     std::atomic<bool> m_connected{false};
+    std::atomic<bool> m_headsetAlive{false};
     std::atomic<bool> m_muted{false};
     std::atomic<bool> m_running{false};
+
+    float m_smoothedVoltage = 0.0f;
 };

@@ -23,7 +23,7 @@ TrayIcon::TrayIcon(QObject *parent)
     m_menu->addAction(QStringLiteral("Quit"), qApp, &QApplication::quit);
 
     m_tray->setContextMenu(m_menu);
-    m_tray->setToolTip(QStringLiteral("HyperX Cloud Flight — Disconnected"));
+    m_tray->setToolTip(QStringLiteral("HyperX Cloud Flight — Off"));
     m_tray->setIcon(renderDisconnectedIcon());
 }
 
@@ -48,14 +48,14 @@ void TrayIcon::updateCharging(bool charging)
     refreshIcon();
     refreshTooltip();
     m_statusAction->setText(charging ? QStringLiteral("Charging")
-                                    : QStringLiteral("Discharging"));
+                                    : QStringLiteral("On Battery"));
 }
 
 void TrayIcon::updateConnected()
 {
     m_connected = true;
     m_statusAction->setText(
-        m_charging ? QStringLiteral("Charging") : QStringLiteral("Discharging"));
+        m_charging ? QStringLiteral("Charging") : QStringLiteral("On Battery"));
     refreshIcon();
     refreshTooltip();
 }
@@ -67,7 +67,7 @@ void TrayIcon::updateDisconnected()
     m_charging = false;
     m_muted = false;
     m_batteryAction->setText(QStringLiteral("Battery: --"));
-    m_statusAction->setText(QStringLiteral("Disconnected"));
+    m_statusAction->setText(QStringLiteral("Off"));
     m_muteAction->setText(QStringLiteral("Mic: --"));
     refreshIcon();
     refreshTooltip();
@@ -90,11 +90,11 @@ void TrayIcon::refreshIcon()
 void TrayIcon::refreshTooltip()
 {
     if (!m_connected) {
-        m_tray->setToolTip(QStringLiteral("HyperX Cloud Flight — Disconnected"));
+        m_tray->setToolTip(QStringLiteral("HyperX Cloud Flight — Off"));
         return;
     }
 
-    QString status = m_charging ? QStringLiteral("Charging") : QStringLiteral("Discharging");
+    QString status = m_charging ? QStringLiteral("Charging") : QStringLiteral("On Battery");
     if (m_percent >= 0) {
         m_tray->setToolTip(
             QStringLiteral("HyperX Cloud Flight\nBattery: %1% — %2")
@@ -172,11 +172,11 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
     }
 
     QFont font;
-    font.setPixelSize(13);
+    font.setPixelSize(18);
     font.setBold(true);
     p.setFont(font);
     p.setPen(Qt::white);
-    p.drawText(QRectF(0, S - 14, S, 14), Qt::AlignCenter,
+    p.drawText(QRectF(0, S - 20, S, 20), Qt::AlignCenter,
                QStringLiteral("%1%").arg(pct));
 
     p.end();
