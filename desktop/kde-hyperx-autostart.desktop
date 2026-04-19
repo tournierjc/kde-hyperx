@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=HyperX Battery Monitor
+Comment=System tray battery monitor for HyperX Cloud Flight
+Exec=kde-hyperx
+Icon=audio-headphones
+Terminal=false
+X-KDE-autostart-after=panel
+X-KDE-autostart-phase=2
+OnlyShowIn=KDE;

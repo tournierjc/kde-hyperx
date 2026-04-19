@@ -1,0 +1,8 @@
+# HyperX Cloud Flight — allow non-root HID access for battery monitoring
+# VID 0x0951 (Kingston/HyperX), PID 0x16C4 (Cloud Flight old) and 0x1723 (Cloud Flight new)
+
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="16c4", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="1723", MODE="0666"
+
+KERNEL=="hidraw*", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="16c4", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="1723", MODE="0666"
