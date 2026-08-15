@@ -11,7 +11,8 @@ echo "==> Installing binary to ${PREFIX}/bin/"
 sudo install -Dm755 "${SCRIPT_DIR}/build/kde-hyperx" "${PREFIX}/bin/kde-hyperx"
 
 echo "==> Installing udev rules..."
-sudo install -Dm644 "${SCRIPT_DIR}/udev/99-hyperx-headset.rules" /etc/udev/rules.d/99-hyperx-headset.rules
+sudo rm -f /etc/udev/rules.d/99-hyperx-headset.rules
+sudo install -Dm644 "${SCRIPT_DIR}/udev/70-hyperx-headset.rules" /etc/udev/rules.d/70-hyperx-headset.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 

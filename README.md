@@ -52,7 +52,7 @@ cmake -B build && cmake --build build
 ### udev rules (required for non-root HID access)
 
 ```
-sudo cp udev/99-hyperx-headset.rules /etc/udev/rules.d/
+sudo cp udev/70-hyperx-headset.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 

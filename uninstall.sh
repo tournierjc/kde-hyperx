@@ -7,6 +7,7 @@ echo "==> Removing binary..."
 sudo rm -f "${PREFIX}/bin/kde-hyperx"
 
 echo "==> Removing udev rules..."
+sudo rm -f /etc/udev/rules.d/70-hyperx-headset.rules
 sudo rm -f /etc/udev/rules.d/99-hyperx-headset.rules
 sudo udevadm control --reload-rules
 

@@ -27,7 +27,7 @@ target_link_libraries(kde-hyperx PRIVATE
 target_include_directories(kde-hyperx PRIVATE src)
 
 install(TARGETS kde-hyperx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES udev/99-hyperx-headset.rules DESTINATION /etc/udev/rules.d)
+install(FILES udev/70-hyperx-headset.rules DESTINATION /etc/udev/rules.d)
 install(FILES desktop/kde-hyperx.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES desktop/kde-hyperx-autostart.desktop

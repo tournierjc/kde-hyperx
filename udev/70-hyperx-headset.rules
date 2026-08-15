@@ -1,8 +1,10 @@
 # HyperX Cloud Flight — allow the active user session to open hidraw
 # VID 0x0951 (Kingston/HyperX), PID 0x16C4 (old) and 0x1723 (new)
 #
-# TAG+="uaccess" is the logind/seat ACL used by KDE. Do not use MODE="0666":
-# that lets any local account send HID reports to the dongle.
+# Must be numbered below 73 so TAG+="uaccess" is set before
+# 73-seat-late.rules runs the uaccess builtin. A 99- rule is too late
+# and leaves the node as root:root 0660 with no session ACL.
+# Do not use MODE="0666": that lets any local account send HID reports.
 
 KERNEL=="hidraw*", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="16c4", MODE="0660", TAG+="uaccess"
 KERNEL=="hidraw*", ATTRS{idVendor}=="0951", ATTRS{idProduct}=="1723", MODE="0660", TAG+="uaccess"
