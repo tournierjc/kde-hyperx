@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <hidapi.h>
 #include <atomic>
 #include <cstdint>
@@ -62,6 +63,8 @@ private:
     void processResponse(const uint8_t *data, int length);
     void notifyHeadsetOn();
     void notifyHeadsetOff();
+    void applyMute(bool muted, bool persist);
+    void restoreMute();
 
     // Maps Cloud Flight open-circuit voltage (mV) to 0-100%. Charging rail
     // voltages (>= 0x100B) are filtered out before this is called.
@@ -76,7 +79,11 @@ private:
     std::atomic<bool> m_dongleOpen{false};
     std::atomic<bool> m_headsetAlive{false};
     std::atomic<bool> m_muted{false};
+    std::atomic<bool> m_muteKnown{false};
     std::atomic<bool> m_running{false};
 
+    static constexpr int MUTE_SETTLE_MS = 750;
+
     float m_smoothedVoltage = 0.0f;
+    QElapsedTimer m_muteIgnoreTimer;
 };

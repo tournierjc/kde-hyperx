@@ -9,6 +9,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("kde-hyperx"));
+    QApplication::setOrganizationName(QStringLiteral("kde-hyperx"));
     QApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QApplication::setQuitOnLastWindowClosed(false);
 

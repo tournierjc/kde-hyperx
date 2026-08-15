@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QSettings>
 #include <QThread>
 #include <algorithm>
 #include <array>
@@ -172,6 +173,10 @@ void HyperXDevice::notifyHeadsetOn()
     if (!wasAlive) {
         qInfo() << "[HyperXDevice] headset on";
         emit deviceConnected();
+        restoreMute();
+        // Power-on sends a 0x65 report that is not the real switch state
+        // (logs as "mic active" and would overwrite the saved mute).
+        m_muteIgnoreTimer.start();
     }
 }
 
@@ -181,11 +186,37 @@ void HyperXDevice::notifyHeadsetOff()
     m_batteryPercent.store(-1);
     m_charging.store(false);
     m_muted.store(false);
+    m_muteKnown.store(false);
     m_smoothedVoltage = 0.0f;
     if (wasAlive) {
         qInfo() << "[HyperXDevice] headset off";
         emit deviceDisconnected();
     }
+}
+
+void HyperXDevice::applyMute(bool muted, bool persist)
+{
+    const bool known = m_muteKnown.exchange(true);
+    const bool changed = !known || muted != m_muted.load();
+    m_muted.store(muted);
+    if (persist) {
+        QSettings settings;
+        settings.setValue(QStringLiteral("micMuted"), muted);
+        settings.sync();
+    }
+    if (changed) {
+        qInfo() << "[HyperXDevice] mic" << (muted ? "muted" : "active");
+        emit muteChanged(muted);
+    }
+}
+
+void HyperXDevice::restoreMute()
+{
+    QSettings settings;
+    if (!settings.contains(QStringLiteral("micMuted"))) {
+        return;
+    }
+    applyMute(settings.value(QStringLiteral("micMuted")).toBool(), false);
 }
 
 void HyperXDevice::requestBattery()
@@ -236,11 +267,11 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
                 notifyHeadsetOff();
             }
         } else if (data[0] == 0x65) {
-            const bool muted = (data[1] == 0x04);
-            if (muted != m_muted.load()) {
-                m_muted.store(muted);
-                emit muteChanged(muted);
+            if (m_muteIgnoreTimer.isValid()
+                && m_muteIgnoreTimer.elapsed() < MUTE_SETTLE_MS) {
+                return;
             }
+            applyMute((data[1] & 0x04) != 0, true);
         }
         return;
     }
