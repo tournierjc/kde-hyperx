@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
+#include <unordered_map>
 
 HyperXDevice::HyperXDevice(QObject *parent)
     : QObject(parent)
@@ -108,19 +110,31 @@ bool HyperXDevice::tryConnect()
             continue;
         }
 
+        std::unordered_map<std::string, hid_device *> byPath;
+
         for (hid_device_info *cur = devs; cur; cur = cur->next) {
-            hid_device *dev = hid_open_path(cur->path);
-            if (!dev) {
+            if (!cur->path) {
                 continue;
             }
-            hid_set_nonblocking(dev, 1);
-            m_handles.push_back(dev);
 
-            // Status collection (usage page 0xFF53 / usage 0x0303) is the one
-            // that accepts the 0x21 0xFF 0x05 battery poll. Other interfaces
-            // carry power/mute/volume events.
-            if (cur->usage_page == USAGE_PAGE_STATUS
-                && (cur->usage == USAGE_STATUS || cur->usage == 0)) {
+            hid_device *dev = nullptr;
+            auto it = byPath.find(cur->path);
+            if (it == byPath.end()) {
+                dev = hid_open_path(cur->path);
+                if (!dev) {
+                    continue;
+                }
+                hid_set_nonblocking(dev, 1);
+                m_handles.push_back(dev);
+                byPath.emplace(cur->path, dev);
+            } else {
+                dev = it->second;
+            }
+
+            // Status collection accepts the 0x21 0xFF 0x05 battery poll.
+            if (cur->usage == USAGE_STATUS
+                || cur->usage_page == USAGE_PAGE_STATUS
+                || cur->usage_page == USAGE_PAGE_STATUS_ALT) {
                 m_statusHandle = dev;
                 m_statusIdentified = true;
             }
@@ -246,22 +260,8 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
         notifyHeadsetOn();
 
         const bool chargeFlag = (data[3] == 0x10 || data[3] == 0x11);
-        const bool fullyCharged = chargeFlag && data[4] < 20;
-
-        uint16_t voltage = static_cast<uint16_t>((data[3] << 8) | data[4]);
-        bool isCharging = chargeFlag || voltage > VOLTAGE_CHARGING_THRESHOLD;
-
-        if (fullyCharged) {
-            if (!m_charging.load()) {
-                m_charging.store(true);
-                emit chargingChanged(true);
-            }
-            if (m_batteryPercent.load() != 100) {
-                m_batteryPercent.store(100);
-                emit batteryChanged(100);
-            }
-            return;
-        }
+        const uint16_t voltage = static_cast<uint16_t>((data[3] << 8) | data[4]);
+        const bool isCharging = chargeFlag || voltage > VOLTAGE_CHARGING_THRESHOLD;
 
         if (isCharging) {
             if (!m_charging.load()) {
@@ -294,28 +294,46 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
         const int prev = m_batteryPercent.load();
         m_batteryPercent.store(level);
         if (level != prev) {
+            qInfo() << "[HyperXDevice] battery" << level << "%  voltage" << voltage << "mV";
             emit batteryChanged(level);
         }
     }
 }
 
-// Polynomial curve from HeadsetControl — maps raw voltage to 0-100%.
-// Coefficients derived from Logitech G633/G933/935 battery characterisation,
-// adapted for Cloud Flight voltage range 3300-4200 mV.
+// Cloud Flight reports millivolts in bytes 3–4 (~3600 empty, ~4075 full,
+// ~4400 on the charger). The Logitech G933 polynomial previously used here
+// saturates at 3975 mV, which is a normal resting voltage for this pack, so
+// the tray stuck at 100% for most of the upper range.
 float HyperXDevice::estimateBatteryLevel(uint16_t voltage)
 {
-    if (voltage <= 3648)
-        return 0.00125f * voltage;
+    static constexpr struct {
+        uint16_t mv;
+        float pct;
+    } kMap[] = {
+        {3600, 0.0f},
+        {3650, 5.0f},
+        {3700, 12.0f},
+        {3750, 23.0f},
+        {3800, 38.0f},
+        {3850, 52.0f},
+        {3900, 65.0f},
+        {3950, 78.0f},
+        {4000, 90.0f},
+        {4050, 97.0f},
+        {4075, 100.0f},
+    };
 
-    if (voltage > 3975)
-        return 100.0f;
+    if (voltage <= kMap[0].mv) {
+        return kMap[0].pct;
+    }
 
-    const double v = static_cast<double>(voltage);
-    return static_cast<float>(
-        0.00000002547505 * std::pow(v, 4)
-      - 0.0003900299     * std::pow(v, 3)
-      + 2.238321         * std::pow(v, 2)
-      - 5706.256         * v
-      + 5452299.0
-    );
+    constexpr size_t n = sizeof(kMap) / sizeof(kMap[0]);
+    for (size_t i = 1; i < n; ++i) {
+        if (voltage <= kMap[i].mv) {
+            const float span = static_cast<float>(kMap[i].mv - kMap[i - 1].mv);
+            const float t = static_cast<float>(voltage - kMap[i - 1].mv) / span;
+            return kMap[i - 1].pct + t * (kMap[i].pct - kMap[i - 1].pct);
+        }
+    }
+    return 100.0f;
 }

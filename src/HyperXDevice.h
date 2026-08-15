@@ -17,9 +17,12 @@ public:
     static constexpr uint16_t PID_CLOUD_FLIGHT_OLD = 0x16C4;
     static constexpr uint16_t PID_CLOUD_FLIGHT_NEW = 0x1723;
 
-    // Vendor collection that accepts the battery poll (srn/hyperx-cloud-flight-wireless)
-    static constexpr uint16_t USAGE_PAGE_STATUS = 0xFF53;
-    static constexpr uint16_t USAGE_STATUS      = 0x0303;
+    // Vendor collections that accept the battery poll.
+    // 0xFF53 is documented by srn/hyperx-cloud-flight-wireless; this dongle
+    // exposes usage 0x0303 on page 0xFF90 instead.
+    static constexpr uint16_t USAGE_PAGE_STATUS     = 0xFF53;
+    static constexpr uint16_t USAGE_PAGE_STATUS_ALT = 0xFF90;
+    static constexpr uint16_t USAGE_STATUS          = 0x0303;
 
     // Reverse-engineered threshold: voltage above this = headset is charging
     static constexpr uint16_t VOLTAGE_CHARGING_THRESHOLD = 0x100B;
@@ -60,8 +63,8 @@ private:
     void notifyHeadsetOn();
     void notifyHeadsetOff();
 
-    // Polynomial curve fitting from HeadsetControl (derived from voltage→percent
-    // characterisation of the Cloud Flight battery). Not documented by HyperX.
+    // Maps Cloud Flight open-circuit voltage (mV) to 0-100%. Charging rail
+    // voltages (>= 0x100B) are filtered out before this is called.
     static float estimateBatteryLevel(uint16_t voltage);
 
     std::vector<hid_device *> m_handles;
