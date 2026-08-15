@@ -87,13 +87,14 @@ void TrayIcon::updateMute(bool muted)
     m_muted = muted;
     m_muteAction->setText(muted ? QStringLiteral("Mic: Muted")
                                 : QStringLiteral("Mic: Active"));
+    refreshIcon();
     refreshTooltip();
 }
 
 void TrayIcon::refreshIcon()
 {
     m_tray->setIcon(
-        m_connected ? renderBatteryIcon(m_percent, m_charging)
+        m_connected ? renderBatteryIcon(m_percent, m_charging, m_muted)
                     : renderDisconnectedIcon());
 }
 
@@ -137,7 +138,34 @@ void TrayIcon::drawHeadsetOutline(QPainter &p, const QColor &color) const
     p.drawRoundedRect(rightCup, 4, 4);
 }
 
-QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
+void TrayIcon::drawMutedBadge(QPainter &p) const
+{
+    constexpr int S = 64;
+    const QRectF badge(S - 24, 2, 22, 22);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0xEF, 0x53, 0x50));
+    p.drawEllipse(badge);
+
+    // Microphone capsule
+    const QRectF mic(badge.center().x() - 3.5, badge.top() + 4, 7, 10);
+    p.setBrush(Qt::white);
+    p.drawRoundedRect(mic, 3.5, 3.5);
+
+    QPen stem(Qt::white, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p.setPen(stem);
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(badge.center().x(), mic.bottom()),
+               QPointF(badge.center().x(), badge.bottom() - 4));
+    p.drawLine(QPointF(badge.center().x() - 4, badge.bottom() - 4),
+               QPointF(badge.center().x() + 4, badge.bottom() - 4));
+
+    // Slash through the mic so the muted state reads at tray size
+    p.setPen(QPen(QColor(0xC62828), 2.4, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(badge.topLeft() + QPointF(5, 5), badge.bottomRight() - QPointF(5, 5));
+}
+
+QIcon TrayIcon::renderBatteryIcon(int percent, bool charging, bool muted) const
 {
     constexpr int S = 64;
     QPixmap pixmap(S, S);
@@ -210,6 +238,10 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
     }
     p.setPen(Qt::white);
     p.drawText(textRect, Qt::AlignCenter, label);
+
+    if (muted) {
+        drawMutedBadge(p);
+    }
 
     p.end();
     return QIcon(pixmap);

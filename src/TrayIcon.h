@@ -25,7 +25,8 @@ public slots:
 
 private:
     void drawHeadsetOutline(QPainter &p, const QColor &color) const;
-    QIcon renderBatteryIcon(int percent, bool charging) const;
+    void drawMutedBadge(QPainter &p) const;
+    QIcon renderBatteryIcon(int percent, bool charging, bool muted) const;
     QIcon renderDisconnectedIcon() const;
     void refreshIcon();
     void refreshTooltip();
