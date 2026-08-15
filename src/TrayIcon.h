@@ -12,6 +12,7 @@ class TrayIcon : public QObject {
 
 public:
     explicit TrayIcon(QObject *parent = nullptr);
+    ~TrayIcon() override;
 
     void show();
 

@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QDebug>
 #include <QThread>
 
 #include "HyperXDevice.h"
@@ -34,7 +35,9 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QApplication::aboutToQuit, [&]() {
         device->stop();
         deviceThread.quit();
-        deviceThread.wait(3000);
+        if (!deviceThread.wait(3000)) {
+            qWarning() << "Device thread did not stop in time";
+        }
     });
 
     tray.show();

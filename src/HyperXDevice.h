@@ -1,11 +1,10 @@
 #pragma once
 
 #include <QObject>
-#include <QElapsedTimer>
 #include <hidapi.h>
 #include <atomic>
 #include <cstdint>
-#include <cmath>
+#include <vector>
 
 class HyperXDevice : public QObject {
     Q_OBJECT
@@ -17,6 +16,10 @@ public:
     static constexpr uint16_t VENDOR_ID            = 0x0951;
     static constexpr uint16_t PID_CLOUD_FLIGHT_OLD = 0x16C4;
     static constexpr uint16_t PID_CLOUD_FLIGHT_NEW = 0x1723;
+
+    // Vendor collection that accepts the battery poll (srn/hyperx-cloud-flight-wireless)
+    static constexpr uint16_t USAGE_PAGE_STATUS = 0xFF53;
+    static constexpr uint16_t USAGE_STATUS      = 0x0303;
 
     // Reverse-engineered threshold: voltage above this = headset is charging
     static constexpr uint16_t VOLTAGE_CHARGING_THRESHOLD = 0x100B;
@@ -30,7 +33,9 @@ public:
     // effective time-constant — good enough for battery level.
     static constexpr float EMA_ALPHA = 0.3f;
 
-    bool isConnected() const { return m_connected.load(); }
+    // Headset powered on (not merely that the USB dongle is present).
+    bool isConnected() const { return m_headsetAlive.load(); }
+    bool isDonglePresent() const { return m_dongleOpen.load(); }
     int  batteryPercent() const { return m_batteryPercent.load(); }
     bool isCharging() const { return m_charging.load(); }
     bool isMuted() const { return m_muted.load(); }
@@ -48,19 +53,24 @@ signals:
 
 private:
     bool tryConnect();
-    void disconnect();
+    void closeDongle();
+    void closeHandles();
     void requestBattery();
     void processResponse(const uint8_t *data, int length);
+    void notifyHeadsetOn();
+    void notifyHeadsetOff();
 
     // Polynomial curve fitting from HeadsetControl (derived from voltage→percent
     // characterisation of the Cloud Flight battery). Not documented by HyperX.
     static float estimateBatteryLevel(uint16_t voltage);
 
-    hid_device *m_device = nullptr;
+    std::vector<hid_device *> m_handles;
+    hid_device *m_statusHandle = nullptr;
+    bool m_statusIdentified = false;
 
     std::atomic<int>  m_batteryPercent{-1};
     std::atomic<bool> m_charging{false};
-    std::atomic<bool> m_connected{false};
+    std::atomic<bool> m_dongleOpen{false};
     std::atomic<bool> m_headsetAlive{false};
     std::atomic<bool> m_muted{false};
     std::atomic<bool> m_running{false};

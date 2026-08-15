@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+include(GNUInstallDirs)
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HIDAPI REQUIRED IMPORTED_TARGET hidapi-hidraw)
@@ -24,8 +26,9 @@ target_link_libraries(kde-hyperx PRIVATE
 
 target_include_directories(kde-hyperx PRIVATE src)
 
-install(TARGETS kde-hyperx DESTINATION bin)
+install(TARGETS kde-hyperx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES udev/99-hyperx-headset.rules DESTINATION /etc/udev/rules.d)
-install(FILES desktop/kde-hyperx.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/share/applications)
+install(FILES desktop/kde-hyperx.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES desktop/kde-hyperx-autostart.desktop
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/etc/xdg/autostart)
+    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/xdg/autostart)

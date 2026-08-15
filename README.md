@@ -56,6 +56,8 @@ sudo cp udev/99-hyperx-headset.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
+Unplug and replug the dongle after installing the rules so logind can apply the `uaccess` ACL.
+
 ### Run
 
 ```
@@ -72,7 +74,7 @@ cp desktop/kde-hyperx-autostart.desktop ~/.config/autostart/
 
 A background thread polls the Cloud Flight dongle every 30 seconds via a 20-byte HID report (`0x21 0xFF 0x05 ...`). The response carries a big-endian voltage value in bytes 3–4 which is mapped to a percentage through a polynomial curve. Voltages above `0x100B` indicate charging. The headset also pushes 2-byte events for power on/off and mic mute which are handled in real time.
 
-The tray icon is rendered dynamically with QPainter — green above 60%, amber 25–60%, red below 25%, and blue with a lightning bolt overlay when charging.
+The tray icon is rendered dynamically with QPainter — green above 60%, amber 25–60%, red below 25%, and blue with a lightning bolt overlay when charging. Unknown readings show `--` rather than a fake 0%. The icon stays off while the dongle is plugged in but the headset is powered down.
 
 ## License
 

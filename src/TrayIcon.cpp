@@ -1,9 +1,11 @@
 #include "TrayIcon.h"
 
 #include <QApplication>
+#include <QFont>
 #include <QPainter>
 #include <QPainterPath>
-#include <QFont>
+
+#include <algorithm>
 
 TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
@@ -13,7 +15,7 @@ TrayIcon::TrayIcon(QObject *parent)
     m_batteryAction = m_menu->addAction(QStringLiteral("Battery: --"));
     m_batteryAction->setEnabled(false);
 
-    m_statusAction = m_menu->addAction(QStringLiteral("Disconnected"));
+    m_statusAction = m_menu->addAction(QStringLiteral("Off"));
     m_statusAction->setEnabled(false);
 
     m_muteAction = m_menu->addAction(QStringLiteral("Mic: --"));
@@ -25,6 +27,13 @@ TrayIcon::TrayIcon(QObject *parent)
     m_tray->setContextMenu(m_menu);
     m_tray->setToolTip(QStringLiteral("HyperX Cloud Flight — Off"));
     m_tray->setIcon(renderDisconnectedIcon());
+}
+
+TrayIcon::~TrayIcon()
+{
+    // QSystemTrayIcon does not take ownership of the context menu.
+    m_tray->setContextMenu(nullptr);
+    delete m_menu;
 }
 
 void TrayIcon::show()
@@ -78,6 +87,7 @@ void TrayIcon::updateMute(bool muted)
     m_muted = muted;
     m_muteAction->setText(muted ? QStringLiteral("Mic: Muted")
                                 : QStringLiteral("Mic: Active"));
+    refreshTooltip();
 }
 
 void TrayIcon::refreshIcon()
@@ -94,15 +104,19 @@ void TrayIcon::refreshTooltip()
         return;
     }
 
-    QString status = m_charging ? QStringLiteral("Charging") : QStringLiteral("On Battery");
+    const QString status = m_charging ? QStringLiteral("Charging")
+                                     : QStringLiteral("On Battery");
+    QString tip;
     if (m_percent >= 0) {
-        m_tray->setToolTip(
-            QStringLiteral("HyperX Cloud Flight\nBattery: %1% — %2")
-                .arg(m_percent).arg(status));
+        tip = QStringLiteral("HyperX Cloud Flight\nBattery: %1% — %2")
+                  .arg(m_percent).arg(status);
     } else {
-        m_tray->setToolTip(
-            QStringLiteral("HyperX Cloud Flight — %1").arg(status));
+        tip = QStringLiteral("HyperX Cloud Flight — %1").arg(status);
     }
+    if (m_muted) {
+        tip += QStringLiteral("\nMic: Muted");
+    }
+    m_tray->setToolTip(tip);
 }
 
 void TrayIcon::drawHeadsetOutline(QPainter &p, const QColor &color) const
@@ -131,33 +145,37 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing, true);
 
-    int pct = std::clamp(percent, 0, 100);
+    const bool known = percent >= 0;
+    const int pct = known ? std::clamp(percent, 0, 100) : 0;
 
     QColor fillColor;
-    if (charging)       fillColor = QColor(0x42, 0xA5, 0xF5);
-    else if (pct > 60)  fillColor = QColor(0x66, 0xBB, 0x6A);
-    else if (pct > 25)  fillColor = QColor(0xFF, 0xCA, 0x28);
-    else                fillColor = QColor(0xEF, 0x53, 0x50);
+    if (charging)          fillColor = QColor(0x42, 0xA5, 0xF5);
+    else if (!known)       fillColor = QColor(0x9E, 0x9E, 0x9E);
+    else if (pct > 60)     fillColor = QColor(0x66, 0xBB, 0x6A);
+    else if (pct >= 25)    fillColor = QColor(0xFF, 0xCA, 0x28);
+    else                   fillColor = QColor(0xEF, 0x53, 0x50);
 
     drawHeadsetOutline(p, fillColor);
 
     QRectF leftCup(6, 28, 16, 22);
     QRectF rightCup(S - 22, 28, 16, 22);
 
-    double fillH = leftCup.height() * pct / 100.0;
-    double fillY = leftCup.bottom() - fillH;
+    if (known) {
+        const double fillH = leftCup.height() * pct / 100.0;
+        const double fillY = leftCup.bottom() - fillH;
 
-    p.setPen(Qt::NoPen);
-    p.setBrush(fillColor);
-    p.setClipRect(QRectF(0, fillY, S, S));
-    p.drawRoundedRect(leftCup.adjusted(1, 1, -1, -1), 3, 3);
-    p.drawRoundedRect(rightCup.adjusted(1, 1, -1, -1), 3, 3);
-    p.setClipping(false);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fillColor);
+        p.setClipRect(QRectF(0, fillY, S, S));
+        p.drawRoundedRect(leftCup.adjusted(1, 1, -1, -1), 3, 3);
+        p.drawRoundedRect(rightCup.adjusted(1, 1, -1, -1), 3, 3);
+        p.setClipping(false);
+    }
 
     if (charging) {
         QPainterPath bolt;
-        double cx = S / 2.0;
-        double cy = 36.0;
+        const double cx = S / 2.0;
+        const double cy = 36.0;
         bolt.moveTo(cx + 2, cy - 8);
         bolt.lineTo(cx - 3, cy + 1);
         bolt.lineTo(cx + 1, cy + 1);
@@ -171,13 +189,27 @@ QIcon TrayIcon::renderBatteryIcon(int percent, bool charging) const
         p.drawPath(bolt);
     }
 
+    const QString label = known ? QStringLiteral("%1%").arg(pct)
+                                : QStringLiteral("--");
+    const QRectF textRect(0, S - 20, S, 20);
+
     QFont font;
     font.setPixelSize(18);
     font.setBold(true);
     p.setFont(font);
+
+    // Outline so the label stays readable on both light and dark panels.
+    p.setPen(QColor(0, 0, 0, 200));
+    for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            p.drawText(textRect.translated(dx, dy), Qt::AlignCenter, label);
+        }
+    }
     p.setPen(Qt::white);
-    p.drawText(QRectF(0, S - 20, S, 20), Qt::AlignCenter,
-               QStringLiteral("%1%").arg(pct));
+    p.drawText(textRect, Qt::AlignCenter, label);
 
     p.end();
     return QIcon(pixmap);

@@ -13,5 +13,8 @@ sudo udevadm control --reload-rules
 echo "==> Removing desktop entries..."
 rm -f "${HOME}/.local/share/applications/kde-hyperx.desktop"
 rm -f "${HOME}/.config/autostart/kde-hyperx-autostart.desktop"
+sudo rm -f "${PREFIX}/share/applications/kde-hyperx.desktop"
+sudo rm -f "${PREFIX}/etc/xdg/autostart/kde-hyperx-autostart.desktop"
+sudo rm -f /etc/xdg/autostart/kde-hyperx-autostart.desktop
 
 echo "==> Done. kde-hyperx has been uninstalled."
