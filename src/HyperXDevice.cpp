@@ -2,7 +2,6 @@
 
 #include <QDebug>
 #include <QElapsedTimer>
-#include <QSettings>
 #include <QThread>
 #include <algorithm>
 #include <array>
@@ -173,9 +172,9 @@ void HyperXDevice::notifyHeadsetOn()
     if (!wasAlive) {
         qInfo() << "[HyperXDevice] headset on";
         emit deviceConnected();
-        restoreMute();
+        m_slewTimer.start();
         // Power-on sends a 0x65 report that is not the real switch state
-        // (logs as "mic active" and would overwrite the saved mute).
+        // (logs as "mic active").
         m_muteIgnoreTimer.start();
     }
 }
@@ -188,35 +187,66 @@ void HyperXDevice::notifyHeadsetOff()
     m_muted.store(false);
     m_muteKnown.store(false);
     m_smoothedVoltage = 0.0f;
+    m_anchorPercent = -1;
+    m_chargeCycle = false;
+    m_slewTimer.invalidate();
     if (wasAlive) {
         qInfo() << "[HyperXDevice] headset off";
         emit deviceDisconnected();
     }
 }
 
-void HyperXDevice::applyMute(bool muted, bool persist)
+void HyperXDevice::applyMute(bool muted)
 {
     const bool known = m_muteKnown.exchange(true);
     const bool changed = !known || muted != m_muted.load();
     m_muted.store(muted);
-    if (persist) {
-        QSettings settings;
-        settings.setValue(QStringLiteral("micMuted"), muted);
-        settings.sync();
-    }
     if (changed) {
         qInfo() << "[HyperXDevice] mic" << (muted ? "muted" : "active");
         emit muteChanged(muted);
     }
 }
 
-void HyperXDevice::restoreMute()
+void HyperXDevice::applyBatteryLevel(int estimate, uint16_t voltage)
 {
-    QSettings settings;
-    if (!settings.contains(QStringLiteral("micMuted"))) {
-        return;
+    const int anchor = m_anchorPercent;
+    const bool charged = m_chargeCycle;
+    m_chargeCycle = false;
+
+    int displayed = estimate;
+
+    if (anchor >= 0 && !charged) {
+        if (estimate > anchor) {
+            if (estimate - anchor < UPWARD_HYSTERESIS_PCT) {
+                displayed = anchor;
+            }
+        } else if (estimate < anchor) {
+            const int gap = anchor - estimate;
+            if (gap >= FAST_CATCHUP_PCT || estimate <= 5) {
+                displayed = estimate;
+            } else {
+                const int maxDrop = m_slewTimer.isValid()
+                    ? static_cast<int>(m_slewTimer.elapsed() / DISCHARGE_SLEW_MS)
+                    : 0;
+                displayed = (maxDrop < 1) ? anchor
+                                          : std::max(estimate, anchor - maxDrop);
+            }
+        } else {
+            displayed = anchor;
+        }
     }
-    applyMute(settings.value(QStringLiteral("micMuted")).toBool(), false);
+
+    if (displayed != anchor) {
+        m_anchorPercent = displayed;
+        m_slewTimer.start();
+    }
+
+    const int prev = m_batteryPercent.exchange(displayed);
+    if (displayed != prev) {
+        qInfo() << "[HyperXDevice] battery" << displayed << "%  voltage" << voltage
+                << "mV  estimate" << estimate << "%";
+        emit batteryChanged(displayed);
+    }
 }
 
 void HyperXDevice::requestBattery()
@@ -271,7 +301,7 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
                 && m_muteIgnoreTimer.elapsed() < MUTE_SETTLE_MS) {
                 return;
             }
-            applyMute((data[1] & 0x04) != 0, true);
+            applyMute((data[1] & 0x04) != 0);
         }
         return;
     }
@@ -295,6 +325,7 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
         const bool isCharging = chargeFlag || voltage > VOLTAGE_CHARGING_THRESHOLD;
 
         if (isCharging) {
+            m_chargeCycle = true;
             if (!m_charging.load()) {
                 m_charging.store(true);
                 emit chargingChanged(true);
@@ -322,12 +353,7 @@ void HyperXDevice::processResponse(const uint8_t *data, int length)
                 static_cast<uint16_t>(std::roundf(m_smoothedVoltage))))),
             0, 100);
 
-        const int prev = m_batteryPercent.load();
-        m_batteryPercent.store(level);
-        if (level != prev) {
-            qInfo() << "[HyperXDevice] battery" << level << "%  voltage" << voltage << "mV";
-            emit batteryChanged(level);
-        }
+        applyBatteryLevel(level, voltage);
     }
 }
 

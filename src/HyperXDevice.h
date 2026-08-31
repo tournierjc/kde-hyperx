@@ -33,9 +33,24 @@ public:
     static constexpr int RECONNECT_INTERVAL_MS    = 5000;
 
     // Exponential moving average weight for voltage smoothing (0..1).
-    // Lower = smoother but slower to react.  0.3 at 30 s polls ≈ 1.5 min
-    // effective time-constant — good enough for battery level.
-    static constexpr float EMA_ALPHA = 0.3f;
+    // Lower = smoother but slower to react.  0.2 at 30 s polls ≈ 2.5 min
+    // effective time-constant — enough to keep a single sag from locking
+    // the discharge ratchet onto a noisy low reading.
+    static constexpr float EMA_ALPHA = 0.2f;
+
+    // Ignore upward SoC jumps smaller than this unless a charge cycle was
+    // observed. Li-ion open-circuit recovery after rest is typically 20–40 mV
+    // (~5–10% on the Cloud Flight curve); a real charge is much larger.
+    static constexpr int UPWARD_HYSTERESIS_PCT = 10;
+
+    // Cloud Flight is ~30 h (≈ 3 %/h). Allow at most 1 % per 10 min (6 %/h)
+    // so load sag cannot dump several percent in a couple of polls, while a
+    // pack that is genuinely emptying still catches up.
+    static constexpr int DISCHARGE_SLEW_MS = 10 * 60 * 1000;
+
+    // If voltage-SoC disagrees this far below the anchor, believe the pack
+    // (used elsewhere, or nearly empty) rather than crawling 1 % at a time.
+    static constexpr int FAST_CATCHUP_PCT = 20;
 
     // Headset powered on (not merely that the USB dongle is present).
     bool isConnected() const { return m_headsetAlive.load(); }
@@ -63,8 +78,8 @@ private:
     void processResponse(const uint8_t *data, int length);
     void notifyHeadsetOn();
     void notifyHeadsetOff();
-    void applyMute(bool muted, bool persist);
-    void restoreMute();
+    void applyMute(bool muted);
+    void applyBatteryLevel(int estimate, uint16_t voltage);
 
     // Maps Cloud Flight open-circuit voltage (mV) to 0-100%. Charging rail
     // voltages (>= 0x100B) are filtered out before this is called.
@@ -85,5 +100,9 @@ private:
     static constexpr int MUTE_SETTLE_MS = 750;
 
     float m_smoothedVoltage = 0.0f;
+    // Last committed SoC for this power-on session (slew / hysteresis only).
+    int m_anchorPercent = -1;
+    bool m_chargeCycle = false;
+    QElapsedTimer m_slewTimer;
     QElapsedTimer m_muteIgnoreTimer;
 };
